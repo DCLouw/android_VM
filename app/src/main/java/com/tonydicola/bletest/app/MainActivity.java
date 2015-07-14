@@ -14,6 +14,7 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.EditText;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 
 import java.nio.ByteBuffer;
@@ -29,23 +30,24 @@ public class MainActivity extends Activity {
     public static UUID UART_UUID = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E");
     public static UUID TX_UUID = UUID.fromString("6E400002-B5A3-F393-E0A9-E50E24DCCA9E");
     public static UUID RX_UUID = UUID.fromString("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
-    public static UUID RX2_UUID = UUID.fromString("6E400004-B5A3-F393-E0A9-E50E24DCCA9E");
+    //public static UUID RX2_UUID = UUID.fromString("6E400004-B5A3-F393-E0A9-E50E24DCCA9E");
     // UUID for the BTLE client characteristic which is necessary for notifications.
     public static UUID CLIENT_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
     // UI elements
     private TextView messages;
 
-    //private TextView txtCadence;
+    private TextView txtCadence;
     //private TextView txtSpeed;
     private TextView txtPower;
+    private ProgressBar prgPower;
 
     // BTLE state
     private BluetoothAdapter adapter;
     private BluetoothGatt gatt;
     private BluetoothGattCharacteristic tx;
     private BluetoothGattCharacteristic rx;
-    private BluetoothGattCharacteristic rx2;
+    //private BluetoothGattCharacteristic rx2;
 
 
 
@@ -64,6 +66,8 @@ public class MainActivity extends Activity {
             }
             else if (newState == BluetoothGatt.STATE_DISCONNECTED) {
                 writeLine("Disconnected!");
+                messages.clearComposingText();
+
             }
             else {
                 writeLine("Connection state changed.  New state: " + newState);
@@ -85,30 +89,33 @@ public class MainActivity extends Activity {
             // Save reference to each characteristic.
             tx = gatt.getService(UART_UUID).getCharacteristic(TX_UUID);
             rx = gatt.getService(UART_UUID).getCharacteristic(RX_UUID);
-            rx2 = gatt.getService(UART_UUID).getCharacteristic(RX2_UUID);
+            //rx2 = gatt.getService(UART_UUID).getCharacteristic(RX2_UUID);
 
             Log.d("this", rx.getUuid().toString()) ;
             Log.d("this", "is the current rx uuid") ;
 
-            Log.d("this", gatt.getService(UART_UUID).getCharacteristic(RX2_UUID).getUuid().toString());
-            Log.d("this", "is the current rx2 uuid") ;
 
             // Setup notifications on RX characteristic changes (i.e. data received).
-            // First call setCharacteristicNotification to enable notification.
-            if (!gatt.setCharacteristicNotification(rx2, true)) {
-                writeLine("Couldn't set notifications for RX characteristic!");
-            }
+
+
+            Log.d("this", "notifications enabled");
+
             // Next update the RX characteristic's client descriptor to enable notifications.
-            if (rx.getDescriptor(CLIENT_UUID) != null) {
-                BluetoothGattDescriptor desc = rx2.getDescriptor(CLIENT_UUID);
-                desc.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                if (!gatt.writeDescriptor(desc)) {
-                    writeLine("Couldn't write RX client descriptor value!");
-                }
-            }
-            else {
-                writeLine("Couldn't get RX client descriptor!");
-            }
+
+            BluetoothGattDescriptor desc = rx.getDescriptor(CLIENT_UUID);
+            desc.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+            gatt.writeDescriptor(desc);
+
+
+            //gatt.writeDescriptor(desc2);
+
+            gatt.setCharacteristicNotification(rx, true);
+            //gatt.setCharacteristicNotification(rx2, true);
+
+            Log.d("this", rx.getDescriptor(CLIENT_UUID).getUuid().toString());
+            //Log.d("this", rx2.getDescriptor(CLIENT_UUID).getUuid().toString());
+            Log.d("this", "is the descriptor uuids");
+
         }
 
         // Called when a remote characteristic changes (like the RX characteristic).
@@ -117,24 +124,18 @@ public class MainActivity extends Activity {
 
 
         {
+
+
+            Log.d("this", characteristic.getUuid().toString());
+            Log.d("this", "characteristic has just changed");
+
             super.onCharacteristicChanged(gatt, characteristic);
             //writeLine("Received: " + characteristic.getStringValue(0));
 
-            if (characteristic.getUuid().toString().equals(RX2_UUID.toString())) // maye convert uuids to strings
-            {
 
-                Log.d("onC:", "iffing for rx");
+
+                Log.d("this", "Updates on rx");
                 updateDisp(characteristic.getStringValue(0));
-
-            }
-
-            else
-            {
-
-                Log.d("this", characteristic.getUuid().toString() ) ;
-                Log.d("this", "is the uuid just changed") ;
-
-            }
 
 
 
@@ -146,12 +147,12 @@ public class MainActivity extends Activity {
         // Called when a device is found.
         @Override
         public void onLeScan(BluetoothDevice bluetoothDevice, int i, byte[] bytes) {
-            writeLine("Found device: " + bluetoothDevice.getAddress());
+            writeLine("Found sensors: " + bluetoothDevice.getAddress());
             // Check if the device has the UART service.
             if (parseUUIDs(bytes).contains(UART_UUID)) {
                 // Found a device, stop the scan.
                 adapter.stopLeScan(scanCallback);
-                writeLine("Found UART service!");
+                writeLine("Found Velometrics service!");
                 // Connect to the device.
                 // Control flow will now go to the callback functions when BTLE events occur.
                 gatt = bluetoothDevice.connectGatt(getApplicationContext(), false, callback);
@@ -169,9 +170,11 @@ public class MainActivity extends Activity {
         messages = (TextView) findViewById(R.id.messages);
 
 
-        //txtCadence =(TextView) findViewById(R.id.txtCadence);
+        txtCadence =(TextView) findViewById(R.id.txtCadence);
         //txtSpeed = (TextView) findViewById(R.id.txtSpeed);
         txtPower = (TextView) findViewById(R.id.txtPower);
+
+        prgPower = (ProgressBar) findViewById(R.id.prgPower);
 
         adapter = BluetoothAdapter.getDefaultAdapter();
     }
@@ -183,7 +186,7 @@ public class MainActivity extends Activity {
         // Scan for all BTLE devices.
         // The first one with the UART service will be chosen--see the code in the scanCallback.
         Log.d("this", "scanning for sum devices");
-        writeLine("Scanning for devices...");
+        writeLine("Scanning for sensors...");
         adapter.startLeScan(scanCallback);
     }
 
@@ -211,6 +214,7 @@ public class MainActivity extends Activity {
             public void run() {
                 messages.append(text);
                 messages.append("\n");
+
             }
         });
     }
@@ -226,29 +230,22 @@ public class MainActivity extends Activity {
 
                 Log.d("this", "now inside the updateDisplay method");
 
-//                switch(index)
-//                {
-//                    case 1: // cadence index
-//                    {
-                //txtCadence.setText(text);
-                //txtSpeed.setText("yeesh, power!");
-                txtPower.setText(text);
+                String delims = "[ ]+";
+                String[] tokens = text.split(delims);
 
-//                    }
-//
-//                    case 2: // speed index
-//                    {
-//                        viewSpeed.setText(text);
-//
-//                    }
-//
-//                    case 3: // power index
-//                    {
-//                        viewPower.setText(text);
-//                    }
+                Log.d("this", "Firts token");
 
-                //}
+                Log.d("this", tokens[0]);
 
+                Log.d("this", "Second token");
+
+                Log.d("this", tokens[1]);
+                txtPower.setText(tokens[0]);
+                txtCadence.setText(tokens[1]);
+
+                int prog = (33120-Integer.parseInt(tokens[0]));
+                prgPower.setProgress(prog*2);
+//txtPower.setText(text);
 
             }
         });
